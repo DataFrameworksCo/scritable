@@ -17,8 +17,9 @@ def check_spelling(paragraphs: List[str], known_names: Set[str]) -> List[Dict]:
     for para_num, paragraph in enumerate(paragraphs, 1):
         sentences = re.split(r'(?<=[.!?])\s+', paragraph)
         for sentence in sentences:
-            # Extract words 3+ chars, no apostrophes, no digits
-            words = re.findall(r"\b([a-zA-Z]{3,})\b", sentence)
+            # Extract words 3+ chars; skip fragments that are part of contractions
+            # e.g. "didn't" → apostrophe lookahead prevents matching "didn"
+            words = re.findall(r"\b([a-zA-Z]{3,})(?!')\b", sentence)
             if not words:
                 continue
 
