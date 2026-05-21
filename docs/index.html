@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scritable — Manuscript Checker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/typo-js@1.2.2/typo.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.7.2/mammoth.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', -apple-system, sans-serif; background: #f1f5f9; color: #0f172a; min-height: 100vh; }
+
+    .hero {
+      background: linear-gradient(140deg, #0f172a 0%, #1e1b4b 55%, #3b0764 100%);
+      padding: 52px 24px 72px; text-align: center; position: relative; overflow: hidden;
+    }
+    .hero::before {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 20% 50%, rgba(99,102,241,.18) 0%, transparent 55%),
+                  radial-gradient(ellipse at 80% 20%, rgba(168,85,247,.14) 0%, transparent 55%);
+      pointer-events: none;
+    }
+    .hero-inner { position: relative; z-index: 1; }
+    .wordmark { display: inline-flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+    .wordmark-icon {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, #818cf8, #a78bfa);
+      border-radius: 12px; display: flex; align-items: center; justify-content: center;
+      font-size: 22px; box-shadow: 0 4px 14px rgba(129,140,248,.4);
+    }
+    .wordmark-text { font-size: 2.1rem; font-weight: 800; color: #fff; letter-spacing: -1.2px; }
+    .hero-tagline { color: rgba(255,255,255,.6); font-size: 1rem; max-width: 420px; margin: 0 auto 24px; line-height: 1.65; }
+    .hero-pills { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+    .hero-pill {
+      display: flex; align-items: center; gap: 6px;
+      background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12);
+      border-radius: 20px; padding: 5px 14px; font-size: .78rem; font-weight: 500; color: rgba(255,255,255,.55);
+    }
+
+    /* Dict status banner */
+    .dict-banner {
+      background: #1e1b4b; color: rgba(255,255,255,.6);
+      text-align: center; font-size: .78rem; padding: 7px 16px;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .dict-banner .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #f59e0b; animation: pulse 1.2s ease-in-out infinite;
+    }
+    .dict-banner.ready .dot { background: #22c55e; animation: none; }
+    .dict-banner.ready { background: #1e1b4b; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    .main { max-width: 880px; margin: -36px auto 56px; padding: 0 16px; position: relative; z-index: 1; }
+
+    .card { background: #fff; border-radius: 20px; box-shadow: 0 4px 28px rgba(0,0,0,.08), 0 1px 4px rgba(0,0,0,.04); padding: 36px; }
+
+    .drop-zone {
+      border: 2px dashed #cbd5e1; border-radius: 14px; padding: 56px 24px; text-align: center;
+      cursor: pointer; transition: border-color .2s, background .2s;
+    }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: #6366f1; background: #f5f3ff; }
+    .dz-icon { font-size: 2.6rem; display: block; margin-bottom: 14px; }
+    .drop-zone h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 5px; }
+    .drop-zone p { color: #64748b; font-size: .9rem; }
+    .browse { color: #6366f1; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+    .format-row { display: flex; gap: 8px; justify-content: center; margin-top: 16px; }
+    .fmt { padding: 3px 13px; border-radius: 20px; border: 1px solid #e2e8f0; background: #f8fafc; font-size: .75rem; font-weight: 600; color: #64748b; }
+    .file-row { display: none; align-items: center; gap: 10px; margin-top: 16px; padding: 12px 16px; background: #f5f3ff; border: 1px solid #c4b5fd; border-radius: 10px; font-size: .88rem; color: #4c1d95; font-weight: 500; }
+    .btn-analyze { display: block; width: 100%; margin-top: 20px; padding: 14px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; border: none; border-radius: 12px; font-size: 1rem; font-weight: 600; cursor: pointer; letter-spacing: .2px; transition: opacity .15s, transform .1s; box-shadow: 0 4px 14px rgba(99,102,241,.35); }
+    .btn-analyze:disabled { opacity: .35; cursor: not-allowed; box-shadow: none; }
+    .btn-analyze:not(:disabled):hover { opacity: .9; transform: translateY(-1px); }
+    .err-alert { display: none; margin-top: 14px; padding: 11px 15px; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 10px; font-size: .875rem; color: #dc2626; }
+
+    .loading-card { background: #fff; border-radius: 20px; box-shadow: 0 4px 28px rgba(0,0,0,.08); padding: 72px 40px; text-align: center; }
+    .spinner { width: 46px; height: 46px; border: 3px solid #e2e8f0; border-top-color: #6366f1; border-radius: 50%; animation: spin .7s linear infinite; margin: 0 auto 20px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-card h4 { font-weight: 600; margin-bottom: 6px; }
+    .loading-card p { color: #94a3b8; font-size: .875rem; line-height: 1.6; }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .stat-box { background: #fff; border-radius: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.06); padding: 18px 14px; text-align: center; }
+    .stat-n { font-size: 1.8rem; font-weight: 800; line-height: 1; }
+    .stat-n.red { color: #dc2626; } .stat-n.amber { color: #d97706; } .stat-n.violet { color: #7c3aed; }
+    .stat-l { font-size: .72rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .6px; margin-top: 4px; }
+
+    .rsection { background: #fff; border-radius: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.06); margin-bottom: 10px; overflow: hidden; }
+    .rsection-hdr { display: flex; align-items: center; gap: 12px; padding: 17px 22px; cursor: pointer; transition: background .12s; user-select: none; }
+    .rsection-hdr:hover { background: #fafafa; }
+    .rsection-hdr.open { border-bottom: 1px solid #f1f5f9; }
+    .hdr-icon { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
+    .hdr-title { font-size: .93rem; font-weight: 600; flex: 1; }
+    .hdr-badge { font-size: .72rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+    .hdr-chev { color: #cbd5e1; font-size: .75rem; transition: transform .2s; }
+    .rsection-hdr.open .hdr-chev { transform: rotate(180deg); }
+
+    .t-red .hdr-icon { background: #fef2f2; } .t-amber .hdr-icon { background: #fffbeb; }
+    .t-violet .hdr-icon { background: #faf5ff; } .t-indigo .hdr-icon { background: #eef2ff; }
+    .t-red .hdr-badge { background: #fef2f2; color: #dc2626; } .t-amber .hdr-badge { background: #fffbeb; color: #b45309; }
+    .t-violet .hdr-badge { background: #faf5ff; color: #7c3aed; } .t-indigo .hdr-badge { background: #eef2ff; color: #4f46e5; }
+
+    .rsection-body { display: none; }
+    .rsection-body.open { display: block; }
+
+    .eitem { padding: 15px 22px; border-bottom: 1px solid #f8fafc; }
+    .eitem:last-child { border-bottom: none; }
+    .chip { display: inline-block; padding: 2px 8px; border-radius: 5px; font-weight: 700; font-size: .86rem; font-family: 'Menlo', 'Courier New', monospace; }
+    .chip-r { background: #fef2f2; color: #dc2626; } .chip-a { background: #fffbeb; color: #92400e; } .chip-v { background: #faf5ff; color: #7c3aed; }
+    .sugg { display: inline-block; padding: 2px 7px; border-radius: 5px; border: 1px solid #d1fae5; background: #f0fdf4; font-size: .76rem; font-family: 'Menlo', monospace; color: #065f46; font-weight: 600; }
+    .arrow { color: #94a3b8; font-size: .8rem; margin: 0 3px; }
+    .occ-count { font-size: .74rem; color: #94a3b8; margin-left: 5px; }
+    .ctx-block { margin-top: 8px; background: #f8fafc; border-left: 3px solid #e2e8f0; padding: 8px 14px; border-radius: 0 8px 8px 0; font-family: 'Lora', Georgia, serif; font-size: .87rem; color: #334155; line-height: 1.75; }
+    .ctx-para { font-family: 'Inter', sans-serif; font-size: .68rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 3px; }
+    .more { font-size: .76rem; color: #94a3b8; margin-top: 5px; }
+    mark.mr { background: #fecaca; color: #991b1b; border-radius: 3px; font-weight: 700; }
+    mark.ma { background: #fde68a; color: #78350f; border-radius: 3px; font-weight: 700; }
+    mark.mv { background: #ede9fe; color: #5b21b6; border-radius: 3px; font-weight: 700; }
+
+    .char-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; padding: 16px 22px; }
+    .char-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 16px; }
+    .char-top { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 8px; }
+    .char-name { font-weight: 700; font-size: .93rem; }
+    .badge-m { font-size: .68rem; color: #94a3b8; background: #e2e8f0; padding: 1px 8px; border-radius: 20px; font-weight: 500; }
+    .badge-warn { font-size: .68rem; color: #b45309; background: #fffbeb; border: 1px solid #fde68a; padding: 1px 8px; border-radius: 20px; font-weight: 600; }
+    .attr-row { display: flex; align-items: center; gap: 6px; margin-top: 5px; font-size: .78rem; }
+    .attr-lbl { color: #94a3b8; min-width: 60px; font-weight: 500; }
+    .attr-v { padding: 1px 8px; border-radius: 20px; border: 1px solid #e2e8f0; background: #fff; color: #334155; font-size: .76rem; }
+    .attr-v.cx { background: #fffbeb; border-color: #fcd34d; color: #92400e; font-weight: 600; }
+    .no-attrs { color: #94a3b8; font-size: .78rem; margin-top: 4px; }
+    .ok-state { padding: 18px 22px; font-size: .875rem; color: #15803d; display: flex; align-items: center; gap: 8px; }
+    .ok-state.muted { color: #94a3b8; }
+
+    .btn-reset { display: block; margin: 20px auto 0; padding: 11px 32px; background: #fff; border: 1.5px solid #e2e8f0; border-radius: 10px; font-size: .88rem; font-weight: 600; color: #475569; cursor: pointer; transition: border-color .15s, color .15s, background .15s; }
+    .btn-reset:hover { border-color: #6366f1; color: #6366f1; background: #f5f3ff; }
+
+    .footer { text-align: center; padding: 28px 16px; color: #94a3b8; font-size: .78rem; }
+    .footer strong { color: #6366f1; font-weight: 700; }
+
+    @media (max-width: 600px) {
+      .hero { padding: 36px 16px 52px; } .wordmark-text { font-size: 1.7rem; }
+      .card { padding: 22px 16px; } .drop-zone { padding: 40px 16px; }
+      .char-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="dict-banner" id="dict-banner">
+  <div class="dot"></div>
+  <span id="dict-status">Loading spell checker…</span>
+</div>
+
+<header class="hero">
+  <div class="hero-inner">
+    <div class="wordmark">
+      <div class="wordmark-icon">✍️</div>
+      <span class="wordmark-text">Scritable</span>
+    </div>
+    <p class="hero-tagline">Upload your manuscript and get instant feedback on spelling, repeated words, and character consistency.</p>
+    <div class="hero-pills">
+      <div class="hero-pill">✓ Spell checking</div>
+      <div class="hero-pill">✓ Repeated words</div>
+      <div class="hero-pill">✓ Character inconsistencies</div>
+      <div class="hero-pill">✓ .txt · .docx · .pdf</div>
+    </div>
+  </div>
+</header>
+
+<main class="main">
+
+  <div id="upload-section">
+    <div class="card">
+      <div class="drop-zone" id="drop-zone">
+        <span class="dz-icon">📄</span>
+        <h3>Drop your manuscript here</h3>
+        <p>or <span class="browse" id="browse-link">browse to upload</span></p>
+        <div class="format-row">
+          <span class="fmt">.txt</span><span class="fmt">.docx</span><span class="fmt">.pdf</span>
+        </div>
+        <input type="file" id="file-input" accept=".txt,.docx,.pdf" style="display:none">
+      </div>
+      <div class="file-row" id="file-row"><span>📄</span><span id="file-name-display"></span></div>
+      <div class="err-alert" id="err-alert"></div>
+      <button class="btn-analyze" id="analyze-btn" disabled>Analyze Manuscript</button>
+    </div>
+  </div>
+
+  <div id="loading-section" style="display:none">
+    <div class="loading-card">
+      <div class="spinner"></div>
+      <h4>Analyzing your manuscript…</h4>
+      <p>Checking spelling, repeated words,<br>and character consistency.</p>
+    </div>
+  </div>
+
+  <div id="results-section" style="display:none">
+    <div class="stats-grid" id="stats-grid"></div>
+    <div class="rsection t-amber" id="sec-incon">
+      <div class="rsection-hdr" onclick="toggle('incon')"><div class="hdr-icon">⚠️</div><span class="hdr-title">Character Inconsistencies</span><span class="hdr-badge" id="badge-incon">0</span><span class="hdr-chev">▼</span></div>
+      <div class="rsection-body" id="body-incon"></div>
+    </div>
+    <div class="rsection t-violet" id="sec-repeat">
+      <div class="rsection-hdr" onclick="toggle('repeat')"><div class="hdr-icon">🔁</div><span class="hdr-title">Repeated Words</span><span class="hdr-badge" id="badge-repeat">0</span><span class="hdr-chev">▼</span></div>
+      <div class="rsection-body" id="body-repeat"></div>
+    </div>
+    <div class="rsection t-red" id="sec-spell">
+      <div class="rsection-hdr" onclick="toggle('spell')"><div class="hdr-icon">🔤</div><span class="hdr-title">Spelling Issues</span><span class="hdr-badge" id="badge-spell">0</span><span class="hdr-chev">▼</span></div>
+      <div class="rsection-body" id="body-spell"></div>
+    </div>
+    <div class="rsection t-indigo" id="sec-chars">
+      <div class="rsection-hdr" onclick="toggle('chars')"><div class="hdr-icon">👤</div><span class="hdr-title">Character Profiles</span><span class="hdr-badge" id="badge-chars">0</span><span class="hdr-chev">▼</span></div>
+      <div class="rsection-body" id="body-chars"></div>
+    </div>
+    <button class="btn-reset" onclick="resetApp()">Analyze Another Manuscript</button>
+  </div>
+
+</main>
+
+<footer class="footer"><strong>Scritable</strong> &nbsp;·&nbsp; Smart manuscript editing</footer>
+
+<script>
+// ── pdf.js setup ────────────────────────────────────────────────────────────
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js';
+}
+
+// ── State ────────────────────────────────────────────────────────────────────
+let typoDict = null;
+let selectedFile = null;
+
+// ── Load spell-check dictionary on startup ───────────────────────────────────
+(async () => {
+  try {
+    const [aff, dic] = await Promise.all([
+      fetch('https://cdn.jsdelivr.net/npm/dictionary-en@3.2.0/index.aff').then(r => r.text()),
+      fetch('https://cdn.jsdelivr.net/npm/dictionary-en@3.2.0/index.dic').then(r => r.text()),
+    ]);
+    typoDict = new Typo('en_US', aff, dic, { platform: 'any' });
+    const banner = document.getElementById('dict-banner');
+    banner.classList.add('ready');
+    document.getElementById('dict-status').textContent = 'Spell checker ready';
+    setTimeout(() => { banner.style.display = 'none'; }, 2000);
+  } catch {
+    document.getElementById('dict-status').textContent = 'Spell checker unavailable (offline?)';
+  }
+})();
+
+// ── Upload UI ────────────────────────────────────────────────────────────────
+const dropZone  = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const analyzeBtn= document.getElementById('analyze-btn');
+
+document.getElementById('browse-link').addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('click', e => { if (e.target.id !== 'browse-link') fileInput.click(); });
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) pick(fileInput.files[0]); });
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); if (e.dataTransfer.files[0]) pick(e.dataTransfer.files[0]); });
+
+function pick(f) {
+  const ext = f.name.split('.').pop().toLowerCase();
+  if (!['txt','docx','pdf'].includes(ext)) { showErr('Please choose a .txt, .docx, or .pdf file.'); return; }
+  selectedFile = f;
+  document.getElementById('file-name-display').textContent = f.name + ' (' + fmtSize(f.size) + ')';
+  document.getElementById('file-row').style.display = 'flex';
+  document.getElementById('err-alert').style.display = 'none';
+  analyzeBtn.disabled = false;
+}
+
+function fmtSize(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n/1024).toFixed(1) + ' KB';
+  return (n/1048576).toFixed(1) + ' MB';
+}
+
+analyzeBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+  document.getElementById('upload-section').style.display = 'none';
+  document.getElementById('loading-section').style.display = 'block';
+  try {
+    const paragraphs = await parseFile(selectedFile);
+    if (!paragraphs.length) { showErr('No text could be extracted from this file.'); return; }
+    const names   = extractNames(paragraphs);
+    const chars   = analyzeCharacters(paragraphs, names);
+    const spell   = checkSpelling(paragraphs, names);
+    const repeats = checkRepeatedWords(paragraphs);
+    renderResults({ paragraphs, chars, spell, repeats });
+  } catch (e) {
+    showErr('Error reading file: ' + e.message);
+  }
+});
+
+function showErr(msg) {
+  document.getElementById('loading-section').style.display = 'none';
+  document.getElementById('upload-section').style.display = 'block';
+  const el = document.getElementById('err-alert');
+  el.textContent = msg; el.style.display = 'block';
+}
+
+function resetApp() {
+  selectedFile = null; fileInput.value = '';
+  document.getElementById('file-row').style.display = 'none';
+  document.getElementById('err-alert').style.display = 'none';
+  analyzeBtn.disabled = true;
+  document.getElementById('results-section').style.display = 'none';
+  document.getElementById('upload-section').style.display = 'block';
+}
+
+// ── File parsers ─────────────────────────────────────────────────────────────
+function parseFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'txt')  return parseTxt(file);
+  if (ext === 'docx') return parseDocx(file);
+  if (ext === 'pdf')  return parsePdf(file);
+  throw new Error('Unsupported format');
+}
+
+function parseTxt(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result.split(/\n\n+/).map(p => p.replace(/\n/g,' ').trim()).filter(p => p));
+    r.onerror = rej;
+    r.readAsText(file);
+  });
+}
+
+function parseDocx(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = async e => {
+      try {
+        const result = await mammoth.extractRawText({ arrayBuffer: e.target.result });
+        res(result.value.split(/\n+/).map(p => p.trim()).filter(p => p));
+      } catch(err) { rej(err); }
+    };
+    r.onerror = rej;
+    r.readAsArrayBuffer(file);
+  });
+}
+
+async function parsePdf(file) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const paras = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const text = content.items.map(it => it.str).join(' ').trim();
+    if (text) paras.push(text);
+  }
+  return paras;
+}
+
+// ── Name extractor (heuristic — no NLP library needed) ───────────────────────
+const SKIP_CAPS = new Set([
+  'The','A','An','He','She','It','They','We','You','His','Her','Their','Its',
+  'Our','Your','That','This','These','Those','When','Where','What','Who',
+  'Which','How','Why','Then','But','And','Or','Not','No','Yes','Mr','Mrs',
+  'Ms','Dr','Sir','Lady','Lord','God','Chapter','Part','Book','Act',
+  'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday',
+  'January','February','March','April','May','June','July','August',
+  'September','October','November','December',
+  'One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten',
+  'North','South','East','West','New','Old','Great','Little','Big',
+  'English','American','British','French','German','Spanish',
+]);
+
+function extractNames(paragraphs) {
+  const counts = {};
+  for (const para of paragraphs) {
+    const sentences = para.split(/[.!?]+\s+/);
+    for (const sentence of sentences) {
+      const words = sentence.trim().split(/\s+/);
+      for (let i = 1; i < words.length; i++) {
+        const w = words[i].replace(/[^a-zA-Z]/g, '');
+        if (w.length >= 3 && /^[A-Z][a-z]+$/.test(w) && !SKIP_CAPS.has(w))
+          counts[w] = (counts[w] || 0) + 1;
+      }
+    }
+  }
+  return Object.entries(counts).filter(([,c]) => c >= 2).map(([n]) => n);
+}
+
+// ── Spelling checker ─────────────────────────────────────────────────────────
+function checkSpelling(paragraphs, names) {
+  if (!typoDict) return [];
+  const nameSet = new Set(names.map(n => n.toLowerCase()));
+  names.forEach(n => n.split(' ').forEach(p => nameSet.add(p.toLowerCase())));
+  const errors = {};
+
+  for (let pi = 0; pi < paragraphs.length; pi++) {
+    const sentences = paragraphs[pi].split(/(?<=[.!?])\s+/);
+    for (const sentence of sentences) {
+      const matches = [...sentence.matchAll(/\b([a-zA-Z]{3,})(?!')\b/g)];
+      for (const m of matches) {
+        const word = m[1];
+        const key  = word.toLowerCase();
+        if (word[0] === word[0].toUpperCase() && /[a-z]/.test(word[0].toLowerCase())) continue; // skip proper-cased
+        if (word[0] !== word[0].toLowerCase()) continue; // skip initial caps
+        if (nameSet.has(key)) continue;
+        if (!typoDict.check(word)) {
+          if (!errors[key]) {
+            errors[key] = { word: key, suggestions: typoDict.suggest(key).slice(0,3), occurrences: [] };
+          }
+          const occ = { paragraph: pi+1, context: sentence.trim() };
+          if (!errors[key].occurrences.some(o => o.paragraph===occ.paragraph && o.context===occ.context))
+            errors[key].occurrences.push(occ);
+        }
+      }
+    }
+  }
+  return Object.values(errors).sort((a,b) => a.occurrences[0].paragraph - b.occurrences[0].paragraph);
+}
+
+// ── Repeated words ───────────────────────────────────────────────────────────
+function checkRepeatedWords(paragraphs) {
+  const skip = new Set(['had','that','it']);
+  const pat  = /\b(\w{2,})\s+\1\b/gi;
+  const out  = [];
+  paragraphs.forEach((para, i) => {
+    pat.lastIndex = 0;
+    let m;
+    while ((m = pat.exec(para)) !== null) {
+      const w = m[1].toLowerCase();
+      if (skip.has(w)) continue;
+      const s = Math.max(0, m.index-40), e = Math.min(para.length, m.index+m[0].length+40);
+      out.push({ word: w, paragraph: i+1, context: (s?'...':'')+para.substring(s,e)+(e<para.length?'...':'') });
+    }
+  });
+  return out;
+}
+
+// ── Character tracker ────────────────────────────────────────────────────────
+const EYE_COLORS  = ['blue','green','brown','gray','grey','hazel','amber','violet','black','pale','golden','silver','dark','light','red','pink'];
+const HAIR_COLORS = ['blonde','blond','brown','black','red','auburn','ginger','gray','grey','white','silver','golden','dark','light','copper','chestnut','brunette'];
+const HAIR_STYLES = ['long','short','curly','straight','wavy','thick','thin','braided','loose','tangled','cropped','shaved','bald'];
+
+const ATTR_DEFS = [
+  { label:'eye color',  bodyWords:['eye','eyes'], values:EYE_COLORS  },
+  { label:'hair color', bodyWords:['hair'],       values:HAIR_COLORS },
+  { label:'hair style', bodyWords:['hair'],       values:HAIR_STYLES },
+];
+
+function findValNearName(sentence, nameLower, bodyWords, values, win=80) {
+  const sl = sentence.toLowerCase();
+  const ni = sl.indexOf(nameLower);
+  if (ni === -1) return null;
+  for (const bw of bodyWords) {
+    let bi = sl.indexOf(bw);
+    while (bi !== -1) {
+      if (Math.abs(ni - bi) <= win) {
+        const snip = sl.substring(Math.max(0,bi-win), Math.min(sl.length,bi+win));
+        for (const v of values) if (new RegExp('\\b'+v+'\\b').test(snip)) return v;
+      }
+      bi = sl.indexOf(bw, bi+1);
+    }
+  }
+  return null;
+}
+
+function analyzeCharacters(paragraphs, names) {
+  const counts = {};
+  for (const para of paragraphs)
+    for (const n of names) {
+      const re = new RegExp('\\b'+n+'\\b','gi');
+      const m  = para.match(re);
+      if (m) counts[n] = (counts[n]||0) + m.length;
+    }
+
+  const profiles = {};
+  for (const name of names) {
+    if ((counts[name]||0) < 2) continue;
+    const nl   = name.toLowerCase();
+    const attrs = {};
+
+    for (let pi=0; pi<paragraphs.length; pi++) {
+      if (!paragraphs[pi].toLowerCase().includes(nl)) continue;
+      const sentences = paragraphs[pi].split(/[.!?]+\s+/);
+      for (const sent of sentences) {
+        for (const def of ATTR_DEFS) {
+          const val = findValNearName(sent, nl, def.bodyWords, def.values);
+          if (val) {
+            if (!attrs[def.label]) attrs[def.label] = [];
+            const occ = { value:val, paragraph:pi+1, context:sent.trim() };
+            if (!attrs[def.label].some(x => x.paragraph===occ.paragraph && x.context===occ.context))
+              attrs[def.label].push(occ);
+          }
+        }
+      }
+    }
+
+    const inconsistencies = [];
+    for (const [lbl, ms] of Object.entries(attrs)) {
+      const vals = [...new Set(ms.map(m=>m.value))];
+      if (vals.length > 1)
+        inconsistencies.push({ attribute:lbl, values_found:vals, mentions:ms,
+          description:`${name}'s ${lbl} is described as ${vals.map(v=>`"${v}"`).join(' and ')}` });
+    }
+
+    if (Object.keys(attrs).length || (counts[name]||0) >= 3)
+      profiles[name] = { name, mentions:(counts[name]||0), attributes:attrs, inconsistencies };
+  }
+
+  const totalIncon = Object.values(profiles).reduce((s,p)=>s+p.inconsistencies.length,0);
+  return { profiles, inconsistency_count: totalIncon };
+}
+
+// ── Section toggle ───────────────────────────────────────────────────────────
+function toggle(id) {
+  const hdr  = document.querySelector(`#sec-${id} .rsection-hdr`);
+  const body = document.getElementById(`body-${id}`);
+  const open = body.classList.contains('open');
+  body.classList.toggle('open', !open);
+  hdr.classList.toggle('open', !open);
+}
+function openSec(id) {
+  document.querySelector(`#sec-${id} .rsection-hdr`).classList.add('open');
+  document.getElementById(`body-${id}`).classList.add('open');
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+function renderResults({ paragraphs, chars, spell, repeats }) {
+  document.getElementById('loading-section').style.display = 'none';
+  document.getElementById('results-section').style.display = 'block';
+
+  const wc     = paragraphs.reduce((s,p)=>s+p.split(/\s+/).length,0);
+  const incons = chars.inconsistency_count;
+  const nChars = Object.keys(chars.profiles).length;
+
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-box"><div class="stat-n">${fmt(wc)}</div><div class="stat-l">Words</div></div>
+    <div class="stat-box"><div class="stat-n">${fmt(paragraphs.length)}</div><div class="stat-l">Paragraphs</div></div>
+    <div class="stat-box"><div class="stat-n ${incons?'amber':''}">${incons}</div><div class="stat-l">Char Issues</div></div>
+    <div class="stat-box"><div class="stat-n ${repeats.length?'violet':''}">${repeats.length}</div><div class="stat-l">Repeated</div></div>
+    <div class="stat-box"><div class="stat-n ${spell.length?'red':''}">${spell.length}</div><div class="stat-l">Spelling</div></div>`;
+
+  document.getElementById('badge-incon').textContent  = incons;
+  document.getElementById('badge-repeat').textContent = repeats.length;
+  document.getElementById('badge-spell').textContent  = spell.length;
+  document.getElementById('badge-chars').textContent  = nChars;
+
+  renderIncon(chars);
+  renderRepeat(repeats);
+  renderSpell(spell);
+  renderChars(chars);
+
+  if (incons)        openSec('incon');
+  if (repeats.length) openSec('repeat');
+  if (spell.length)  openSec('spell');
+  openSec('chars');
+}
+
+function fmt(n) { return Number(n).toLocaleString(); }
+function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function hi(text, words, cls) {
+  let out = esc(text);
+  words.forEach(w => {
+    out = out.replace(new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','gi'),
+      m => `<mark class="${cls}">${m}</mark>`);
+  });
+  return out;
+}
+
+function renderIncon(cd) {
+  const body = document.getElementById('body-incon');
+  const all  = [];
+  Object.values(cd.profiles).forEach(p => p.inconsistencies.forEach(i => all.push({char:p.name,...i})));
+  if (!all.length) { body.innerHTML=`<div class="ok-state">✓ No character inconsistencies found.</div>`; return; }
+  body.innerHTML = all.map(i=>`
+    <div class="eitem">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px">
+        <strong>${esc(i.char)}</strong>
+        <span style="background:#fffbeb;color:#92400e;border-radius:20px;padding:2px 10px;font-size:.74rem;font-weight:600">${esc(i.attribute)}</span>
+        ${i.values_found.map(v=>`<span class="chip chip-a">${esc(v)}</span>`).join('<span style="color:#94a3b8;font-size:.8rem;margin:0 2px">vs</span>')}
+      </div>
+      <p style="font-size:.83rem;color:#b45309;margin-bottom:8px">${esc(i.description)}</p>
+      ${i.mentions.slice(0,4).map(m=>`<div class="ctx-block"><div class="ctx-para">Paragraph ${m.paragraph}</div>${hi(m.context,i.values_found,'ma')}</div>`).join('')}
+      ${i.mentions.length>4?`<p class="more">…and ${i.mentions.length-4} more</p>`:''}
+    </div>`).join('');
+}
+
+function renderRepeat(repeats) {
+  const body = document.getElementById('body-repeat');
+  if (!repeats.length) { body.innerHTML=`<div class="ok-state">✓ No repeated words found.</div>`; return; }
+  body.innerHTML = repeats.map(r=>`
+    <div class="eitem">
+      <div style="margin-bottom:7px"><span class="chip chip-v">${esc(r.word)} ${esc(r.word)}</span></div>
+      <div class="ctx-block"><div class="ctx-para">Paragraph ${r.paragraph}</div>${hi(r.context,[r.word],'mv')}</div>
+    </div>`).join('');
+}
+
+function renderSpell(errors) {
+  const body = document.getElementById('body-spell');
+  if (!errors.length) { body.innerHTML=`<div class="ok-state">✓ No spelling errors found.</div>`; return; }
+  if (!typoDict) { body.innerHTML=`<div class="ok-state muted">Spell checker unavailable — check your connection and reload.</div>`; return; }
+  body.innerHTML = errors.map(e=>`
+    <div class="eitem">
+      <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:7px">
+        <span class="chip chip-r">${esc(e.word)}</span>
+        ${e.suggestions.length?`<span class="arrow">→</span>${e.suggestions.map(s=>`<span class="sugg">${esc(s)}</span>`).join('')}`:''}
+        ${e.occurrences.length>1?`<span class="occ-count">${e.occurrences.length}×</span>`:''}
+      </div>
+      ${e.occurrences.slice(0,3).map(o=>`<div class="ctx-block"><div class="ctx-para">Paragraph ${o.paragraph}</div>${hi(o.context,[e.word],'mr')}</div>`).join('')}
+      ${e.occurrences.length>3?`<p class="more">…and ${e.occurrences.length-3} more</p>`:''}
+    </div>`).join('');
+}
+
+function renderChars(cd) {
+  const body  = document.getElementById('body-chars');
+  const profs = Object.values(cd.profiles);
+  if (!profs.length) { body.innerHTML=`<div class="ok-state muted">No characters with enough mentions detected.</div>`; return; }
+  profs.sort((a,b)=>(b.inconsistencies.length-a.inconsistencies.length)||(b.mentions-a.mentions));
+  body.innerHTML = `<div class="char-grid">${profs.map(p=>{
+    const rows = Object.entries(p.attributes).map(([lbl,ms])=>{
+      const vals=[...new Set(ms.map(m=>m.value))], cx=vals.length>1;
+      return `<div class="attr-row"><span class="attr-lbl">${esc(lbl)}</span>${vals.map(v=>`<span class="attr-v ${cx?'cx':''}">${esc(v)}</span>`).join('')}</div>`;
+    }).join('');
+    return `<div class="char-card">
+      <div class="char-top">
+        <span class="char-name">${esc(p.name)}</span>
+        <span class="badge-m">${p.mentions} mentions</span>
+        ${p.inconsistencies.length?`<span class="badge-warn">⚠ ${p.inconsistencies.length} issue${p.inconsistencies.length>1?'s':''}</span>`:''}
+      </div>
+      ${rows||'<div class="no-attrs">No physical attributes detected</div>'}
+    </div>`;
+  }).join('')}</div>`;
+}
+</script>
+</body>
+</html>
