@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manuscript Checker</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #1a1a2e;
+      --primary: #4f46e5;
+      --primary-soft: #eef2ff;
+      --danger: #dc2626;
+      --danger-soft: #fef2f2;
+      --warn: #b45309;
+      --warn-soft: #fffbeb;
+      --success: #15803d;
+      --success-soft: #f0fdf4;
+      --border: #e5e7eb;
+      --muted: #6b7280;
+      --card-shadow: 0 1px 4px rgba(0,0,0,.08), 0 0 0 1px rgba(0,0,0,.04);
+    }
+    * { box-sizing: border-box; }
+    body {
+      background: #f3f4f6;
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ─── Header ─── */
+    .site-header {
+      background: white;
+      border-bottom: 1px solid var(--border);
+      padding: 18px 0;
+    }
+    .site-header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -.5px;
+      margin: 0;
+    }
+    .site-header p { margin: 0; color: var(--muted); font-size: .95rem; }
+
+    /* ─── Upload ─── */
+    .upload-card {
+      background: white;
+      border-radius: 16px;
+      box-shadow: var(--card-shadow);
+      padding: 40px;
+    }
+    .drop-zone {
+      border: 2px dashed #d1d5db;
+      border-radius: 12px;
+      padding: 52px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      user-select: none;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+    }
+    .drop-zone .icon { font-size: 3rem; line-height: 1; margin-bottom: 12px; }
+    .drop-zone h4 { font-weight: 600; margin-bottom: 4px; }
+    .drop-zone p { color: var(--muted); margin: 0; font-size: .9rem; }
+    .drop-zone .browse-link { color: var(--primary); text-decoration: underline; cursor: pointer; }
+    .format-badges { margin-top: 14px; display: flex; gap: 6px; justify-content: center; }
+    .format-badges span {
+      background: #f3f4f6;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 2px 12px;
+      font-size: .8rem;
+      font-weight: 500;
+      color: var(--muted);
+    }
+    .file-chosen {
+      margin-top: 16px;
+      padding: 10px 16px;
+      background: var(--primary-soft);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: .9rem;
+    }
+    .btn-analyze {
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 36px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+      margin-top: 24px;
+    }
+    .btn-analyze:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-analyze:not(:disabled):hover { opacity: .88; }
+
+    /* ─── Loading ─── */
+    .loading-wrap {
+      text-align: center;
+      padding: 80px 20px;
+    }
+    .loading-wrap .spinner {
+      width: 52px; height: 52px;
+      border: 4px solid #e5e7eb;
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-wrap h5 { font-weight: 600; margin-bottom: 6px; }
+    .loading-wrap p { color: var(--muted); font-size: .9rem; }
+
+    /* ─── Results ─── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stat-box {
+      background: white;
+      border-radius: 12px;
+      box-shadow: var(--card-shadow);
+      padding: 16px 20px;
+      text-align: center;
+    }
+    .stat-box .num { font-size: 1.7rem; font-weight: 700; line-height: 1.1; }
+    .stat-box .lbl { font-size: .8rem; color: var(--muted); margin-top: 2px; }
+    .stat-box.danger .num { color: var(--danger); }
+    .stat-box.warn .num { color: var(--warn); }
+    .stat-box.primary .num { color: var(--primary); }
+
+    /* ─── Result sections ─── */
+    .result-section {
+      background: white;
+      border-radius: 12px;
+      box-shadow: var(--card-shadow);
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 20px;
+      cursor: pointer;
+      border-bottom: 1px solid transparent;
+      transition: background .15s;
+    }
+    .section-header:hover { background: #fafafa; }
+    .section-header.open { border-bottom-color: var(--border); }
+    .section-header .icon-circle {
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem; flex-shrink: 0;
+    }
+    .section-header h3 { font-size: 1rem; font-weight: 600; margin: 0; flex: 1; }
+    .section-header .count-badge {
+      font-size: .78rem; font-weight: 600;
+      padding: 2px 10px; border-radius: 20px;
+    }
+    .section-header .chevron { color: var(--muted); transition: transform .2s; }
+    .section-header.open .chevron { transform: rotate(180deg); }
+
+    .warn-header .icon-circle { background: var(--warn-soft); }
+    .danger-header .icon-circle { background: var(--danger-soft); }
+    .primary-header .icon-circle { background: var(--primary-soft); }
+    .success-header .icon-circle { background: var(--success-soft); }
+
+    .warn-header .count-badge { background: var(--warn-soft); color: var(--warn); }
+    .danger-header .count-badge { background: var(--danger-soft); color: var(--danger); }
+    .primary-header .count-badge { background: var(--primary-soft); color: var(--primary); }
+
+    .section-body { padding: 0; display: none; }
+    .section-body.open { display: block; }
+
+    /* ─── Error items ─── */
+    .error-item {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .error-item:last-child { border-bottom: none; }
+    .word-chip {
+      display: inline-block;
+      background: var(--danger-soft);
+      color: var(--danger);
+      font-weight: 700;
+      padding: 1px 8px;
+      border-radius: 4px;
+      font-family: 'Menlo', 'Courier New', monospace;
+      font-size: .92rem;
+    }
+    .incon-chip {
+      display: inline-block;
+      background: var(--warn-soft);
+      color: var(--warn);
+      font-weight: 700;
+      padding: 1px 8px;
+      border-radius: 4px;
+      font-size: .92rem;
+    }
+    .repeat-chip {
+      display: inline-block;
+      background: #fdf4ff;
+      color: #7c3aed;
+      font-weight: 700;
+      padding: 1px 8px;
+      border-radius: 4px;
+      font-family: 'Menlo', 'Courier New', monospace;
+      font-size: .92rem;
+    }
+    .suggestion-list { display: inline-flex; gap: 6px; flex-wrap: wrap; margin-left: 6px; }
+    .suggestion-pill {
+      background: #f3f4f6;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 8px;
+      font-size: .8rem;
+      font-family: 'Menlo', 'Courier New', monospace;
+      color: var(--success);
+      font-weight: 600;
+    }
+    .context-block {
+      margin-top: 6px;
+      background: #f9fafb;
+      border-left: 3px solid var(--border);
+      padding: 7px 12px;
+      border-radius: 0 6px 6px 0;
+      font-size: .88rem;
+      font-family: Georgia, 'Times New Roman', serif;
+      color: #374151;
+      line-height: 1.6;
+    }
+    .context-block .para-num {
+      font-family: -apple-system, sans-serif;
+      font-size: .75rem;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+    .more-note { font-size: .8rem; color: var(--muted); margin-top: 4px; }
+
+    mark.spell  { background: #fecaca; color: var(--danger); border-radius: 2px; font-weight: 700; }
+    mark.incon  { background: #fde68a; color: #92400e;       border-radius: 2px; font-weight: 700; }
+    mark.repeat { background: #ede9fe; color: #5b21b6;       border-radius: 2px; font-weight: 700; }
+
+    /* ─── Character profiles ─── */
+    .char-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+      padding: 16px 20px;
+    }
+    .char-card {
+      background: #f9fafb;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .char-card .char-name { font-weight: 700; font-size: .95rem; }
+    .char-card .mentions-badge {
+      font-size: .75rem; color: var(--muted);
+      background: #e5e7eb; border-radius: 20px;
+      padding: 1px 8px; margin-left: 6px;
+    }
+    .char-attrs { margin-top: 8px; font-size: .82rem; }
+    .char-attrs .attr-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+    .char-attrs .attr-lbl { color: var(--muted); min-width: 72px; }
+    .attr-val {
+      background: white; border: 1px solid var(--border);
+      border-radius: 20px; padding: 1px 8px; font-size: .8rem;
+    }
+    .attr-val.conflict { background: var(--warn-soft); border-color: #fcd34d; color: var(--warn); font-weight: 600; }
+    .no-items { padding: 20px; color: var(--success); font-size: .9rem; }
+    .no-items.muted { color: var(--muted); }
+
+    /* ─── Re-analyze button ─── */
+    .btn-reanalyze {
+      background: white;
+      border: 1.5px solid var(--primary);
+      color: var(--primary);
+      border-radius: 8px;
+      padding: 10px 28px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-reanalyze:hover { background: var(--primary-soft); }
+
+    .alert-err {
+      background: var(--danger-soft);
+      border: 1px solid #fca5a5;
+      color: var(--danger);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-top: 16px;
+      font-size: .9rem;
+    }
+
+    @media (max-width: 600px) {
+      .upload-card { padding: 24px 16px; }
+      .drop-zone { padding: 36px 16px; }
+      .char-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container" style="max-width:860px">
+    <h1>📖 Manuscript Checker</h1>
+    <p>Catch spelling mistakes, repeated words, and character inconsistencies in your manuscript</p>
+  </div>
+</header>
+
+<main class="container py-4" style="max-width:860px">
+
+  <!-- Upload Section -->
+  <div id="upload-section">
+    <div class="upload-card">
+      <div class="drop-zone" id="drop-zone">
+        <div class="icon">📄</div>
+        <h4>Drop your manuscript here</h4>
+        <p>or <span class="browse-link" id="browse-link">click to browse</span></p>
+        <div class="format-badges">
+          <span>.txt</span><span>.docx</span><span>.pdf</span>
+        </div>
+        <input type="file" id="file-input" accept=".txt,.docx,.pdf" style="display:none">
+      </div>
+
+      <div id="file-chosen" class="file-chosen" style="display:none">
+        <span>📄</span>
+        <span id="file-name-display"></span>
+      </div>
+
+      <div id="error-alert" class="alert-err" style="display:none"></div>
+
+      <div class="text-center">
+        <button class="btn-analyze" id="analyze-btn" disabled>Analyze Manuscript</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading Section -->
+  <div id="loading-section" style="display:none">
+    <div class="loading-wrap">
+      <div class="spinner"></div>
+      <h5>Analyzing your manuscript…</h5>
+      <p>Checking spelling, repeated words, and character consistency.<br>This may take a minute for longer works.</p>
+    </div>
+  </div>
+
+  <!-- Results Section -->
+  <div id="results-section" style="display:none">
+
+    <!-- Stats -->
+    <div class="stats-row" id="stats-row"></div>
+
+    <!-- Inconsistencies -->
+    <div class="result-section" id="incon-section">
+      <div class="section-header warn-header" onclick="toggleSection('incon')">
+        <div class="icon-circle">⚠️</div>
+        <h3>Character Inconsistencies</h3>
+        <span class="count-badge" id="incon-badge">0</span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body" id="incon-body"></div>
+    </div>
+
+    <!-- Repeated Words -->
+    <div class="result-section" id="repeat-section">
+      <div class="section-header" style="cursor:pointer" onclick="toggleSection('repeat')">
+        <div class="icon-circle" style="background:#fdf4ff">🔁</div>
+        <h3>Repeated Words</h3>
+        <span class="count-badge" id="repeat-badge" style="background:#fdf4ff;color:#7c3aed">0</span>
+        <span class="chevron" style="color:var(--muted)">▼</span>
+      </div>
+      <div class="section-body" id="repeat-body"></div>
+    </div>
+
+    <!-- Spelling -->
+    <div class="result-section" id="spell-section">
+      <div class="section-header danger-header" onclick="toggleSection('spell')">
+        <div class="icon-circle">🔤</div>
+        <h3>Spelling Issues</h3>
+        <span class="count-badge" id="spell-badge">0</span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body" id="spell-body"></div>
+    </div>
+
+    <!-- Character Profiles -->
+    <div class="result-section" id="chars-section">
+      <div class="section-header primary-header" onclick="toggleSection('chars')">
+        <div class="icon-circle">👤</div>
+        <h3>Character Profiles</h3>
+        <span class="count-badge" id="chars-badge">0</span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body" id="chars-body"></div>
+    </div>
+
+    <div class="text-center mt-3">
+      <button class="btn-reanalyze" onclick="resetToUpload()">Analyze Another Manuscript</button>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const dropZone   = document.getElementById('drop-zone');
+const fileInput  = document.getElementById('file-input');
+const analyzeBtn = document.getElementById('analyze-btn');
+const browseLink = document.getElementById('browse-link');
+let selectedFile = null;
+
+browseLink.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('click', (e) => { if (e.target !== browseLink) fileInput.click(); });
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) pick(fileInput.files[0]); });
+
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) pick(e.dataTransfer.files[0]);
+});
+
+function pick(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['txt','docx','pdf'].includes(ext)) {
+    showErr('Unsupported format. Please choose a .txt, .docx, or .pdf file.');
+    return;
+  }
+  selectedFile = file;
+  document.getElementById('file-name-display').textContent = file.name + ' (' + fmtSize(file.size) + ')';
+  document.getElementById('file-chosen').style.display = 'flex';
+  document.getElementById('error-alert').style.display = 'none';
+  analyzeBtn.disabled = false;
+}
+
+function fmtSize(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n/1024).toFixed(1) + ' KB';
+  return (n/1048576).toFixed(1) + ' MB';
+}
+
+analyzeBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+  document.getElementById('upload-section').style.display = 'none';
+  document.getElementById('loading-section').style.display = 'block';
+
+  const fd = new FormData();
+  fd.append('file', selectedFile);
+
+  try {
+    const res = await fetch('/analyze', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) { showErr(data.error); return; }
+    render(data);
+  } catch(e) {
+    showErr('Something went wrong during analysis. Please try again.');
+  }
+});
+
+function showErr(msg) {
+  document.getElementById('loading-section').style.display = 'none';
+  document.getElementById('upload-section').style.display = 'block';
+  const el = document.getElementById('error-alert');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function resetToUpload() {
+  selectedFile = null;
+  fileInput.value = '';
+  document.getElementById('file-chosen').style.display = 'none';
+  document.getElementById('error-alert').style.display = 'none';
+  analyzeBtn.disabled = true;
+  document.getElementById('results-section').style.display = 'none';
+  document.getElementById('upload-section').style.display = 'block';
+}
+
+// ─── Section toggle ───────────────────────────────────────────────────────
+function toggleSection(id) {
+  const header = document.querySelector(`#${id}-section .section-header`);
+  const body   = document.getElementById(`${id}-body`);
+  const open   = body.classList.contains('open');
+  body.classList.toggle('open', !open);
+  header.classList.toggle('open', !open);
+}
+
+function openSection(id) {
+  const header = document.querySelector(`#${id}-section .section-header`);
+  const body   = document.getElementById(`${id}-body`);
+  body.classList.add('open');
+  header.classList.add('open');
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────
+function render(data) {
+  document.getElementById('loading-section').style.display = 'none';
+  document.getElementById('results-section').style.display = 'block';
+
+  const incons = data.characters.inconsistency_count || 0;
+  const spells = data.spelling.length;
+  const repeats = (data.repeated_words || []).length;
+
+  // Stats
+  document.getElementById('stats-row').innerHTML = `
+    <div class="stat-box"><div class="num">${fmt(data.word_count)}</div><div class="lbl">Words</div></div>
+    <div class="stat-box"><div class="num">${fmt(data.paragraph_count)}</div><div class="lbl">Paragraphs</div></div>
+    <div class="stat-box ${incons > 0 ? 'warn' : ''}"><div class="num">${incons}</div><div class="lbl">Character Issues</div></div>
+    <div class="stat-box ${repeats > 0 ? 'primary' : ''}"><div class="num">${repeats}</div><div class="lbl">Repeated Words</div></div>
+    <div class="stat-box ${spells > 0 ? 'danger' : ''}"><div class="num">${spells}</div><div class="lbl">Spelling Issues</div></div>
+  `;
+
+  renderInconsistencies(data.characters);
+  renderRepeats(data.repeated_words || []);
+  renderSpelling(data.spelling);
+  renderProfiles(data.characters);
+
+  // Auto-open sections that have issues
+  if (incons > 0)  openSection('incon');
+  if (repeats > 0) openSection('repeat');
+  if (spells > 0)  openSection('spell');
+  openSection('chars');
+
+  document.getElementById('incon-badge').textContent  = incons;
+  document.getElementById('repeat-badge').textContent = repeats;
+  document.getElementById('spell-badge').textContent  = spells;
+  document.getElementById('chars-badge').textContent  = Object.keys(data.characters.profiles || {}).length;
+}
+
+function fmt(n) { return Number(n).toLocaleString(); }
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function highlightAll(text, words, cls) {
+  let out = esc(text);
+  words.forEach(w => {
+    const re = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\b', 'gi');
+    out = out.replace(re, m => `<mark class="${cls}">${m}</mark>`);
+  });
+  return out;
+}
+
+// ─── Inconsistencies ──────────────────────────────────────────────────────
+function renderInconsistencies(charData) {
+  const body = document.getElementById('incon-body');
+  const allIncons = [];
+
+  Object.values(charData.profiles || {}).forEach(prof => {
+    (prof.inconsistencies || []).forEach(inc => {
+      allIncons.push({ char: prof.name, ...inc });
+    });
+  });
+
+  if (!charData.spacy_available) {
+    body.innerHTML = `<div class="no-items muted">⚙️ spaCy is not installed — character analysis is unavailable.<br>Run <code>python -m spacy download en_core_web_sm</code> then restart.</div>`;
+    return;
+  }
+
+  if (allIncons.length === 0) {
+    body.innerHTML = `<div class="no-items">✓ No character inconsistencies found.</div>`;
+    return;
+  }
+
+  body.innerHTML = allIncons.map(inc => {
+    const shown = inc.mentions.slice(0, 4);
+    return `
+      <div class="error-item">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+          <strong>${esc(inc.char)}</strong>
+          <span style="background:var(--warn-soft);color:var(--warn);border-radius:20px;padding:1px 10px;font-size:.8rem;font-weight:600">${esc(inc.attribute)}</span>
+          ${inc.values_found.map(v => `<span class="incon-chip">${esc(v)}</span>`).join(' vs ')}
+        </div>
+        <p style="font-size:.87rem;color:var(--warn);margin-bottom:8px">${esc(inc.description)}</p>
+        ${shown.map(m => `
+          <div class="context-block">
+            <div class="para-num">Paragraph ${m.paragraph}</div>
+            ${highlightAll(m.context, inc.values_found, 'incon')}
+          </div>
+        `).join('')}
+        ${inc.mentions.length > 4 ? `<p class="more-note">…and ${inc.mentions.length - 4} more occurrences</p>` : ''}
+      </div>`;
+  }).join('');
+}
+
+// ─── Repeated words ───────────────────────────────────────────────────────
+function renderRepeats(repeats) {
+  const body = document.getElementById('repeat-body');
+  if (repeats.length === 0) {
+    body.innerHTML = `<div class="no-items">✓ No repeated words found.</div>`;
+    return;
+  }
+  body.innerHTML = repeats.map(r => `
+    <div class="error-item">
+      <div style="margin-bottom:6px">
+        <span class="repeat-chip">${esc(r.word)} ${esc(r.word)}</span>
+      </div>
+      <div class="context-block">
+        <div class="para-num">Paragraph ${r.paragraph}</div>
+        ${highlightAll(r.context, [r.word + ' ' + r.word], 'repeat')}
+      </div>
+    </div>`).join('');
+}
+
+// ─── Spelling ─────────────────────────────────────────────────────────────
+function renderSpelling(errors) {
+  const body = document.getElementById('spell-body');
+  if (errors.length === 0) {
+    body.innerHTML = `<div class="no-items">✓ No spelling errors found.</div>`;
+    return;
+  }
+
+  body.innerHTML = errors.map(err => {
+    const shown = err.occurrences.slice(0, 3);
+    return `
+      <div class="error-item">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+          <span class="word-chip">${esc(err.word)}</span>
+          ${err.suggestions.length ? `
+            <span style="color:var(--muted);font-size:.8rem">→</span>
+            <span class="suggestion-list">
+              ${err.suggestions.map(s => `<span class="suggestion-pill">${esc(s)}</span>`).join('')}
+            </span>` : ''}
+          ${err.occurrences.length > 1 ? `<span style="color:var(--muted);font-size:.78rem;margin-left:4px">${err.occurrences.length}×</span>` : ''}
+        </div>
+        ${shown.map(occ => `
+          <div class="context-block">
+            <div class="para-num">Paragraph ${occ.paragraph}</div>
+            ${highlightAll(occ.context, [err.word], 'spell')}
+          </div>`).join('')}
+        ${err.occurrences.length > 3 ? `<p class="more-note">…and ${err.occurrences.length - 3} more occurrences</p>` : ''}
+      </div>`;
+  }).join('');
+}
+
+// ─── Character Profiles ───────────────────────────────────────────────────
+function renderProfiles(charData) {
+  const body = document.getElementById('chars-body');
+
+  if (!charData.spacy_available) {
+    body.innerHTML = `<div class="no-items muted" style="padding:20px">spaCy not available. Install it to enable character tracking.</div>`;
+    return;
+  }
+
+  const profiles = Object.values(charData.profiles || {});
+  if (profiles.length === 0) {
+    body.innerHTML = `<div class="no-items muted">No characters with enough mentions were found.</div>`;
+    return;
+  }
+
+  // Sort: characters with inconsistencies first, then by mention count
+  profiles.sort((a, b) => (b.inconsistencies.length - a.inconsistencies.length) || (b.mentions - a.mentions));
+
+  const cards = profiles.map(prof => {
+    const attrRows = Object.entries(prof.attributes || {}).map(([label, mentions]) => {
+      const vals = [...new Set(mentions.map(m => m.value))];
+      const hasConflict = vals.length > 1;
+      return `
+        <div class="attr-row">
+          <span class="attr-lbl">${esc(label)}</span>
+          ${vals.map(v => `<span class="attr-val ${hasConflict ? 'conflict' : ''}">${esc(v)}</span>`).join('')}
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="char-card">
+        <div>
+          <span class="char-name">${esc(prof.name)}</span>
+          <span class="mentions-badge">${prof.mentions} mentions</span>
+          ${prof.inconsistencies.length > 0
+            ? `<span style="background:var(--warn-soft);color:var(--warn);border-radius:20px;padding:1px 8px;font-size:.72rem;font-weight:700;margin-left:4px">⚠ ${prof.inconsistencies.length} issue${prof.inconsistencies.length > 1 ? 's' : ''}</span>`
+            : ''}
+        </div>
+        ${attrRows ? `<div class="char-attrs">${attrRows}</div>` : '<div class="char-attrs" style="color:var(--muted);font-size:.8rem;margin-top:6px">No physical attributes detected</div>'}
+      </div>`;
+  }).join('');
+
+  body.innerHTML = `<div class="char-grid">${cards}</div>`;
+}
+</script>
+</body>
+</html>
